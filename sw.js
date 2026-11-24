@@ -1,5 +1,5 @@
 // A2C Music app: works offline once opened. Change VERSION when you upload a new index.html.
-const VERSION = 'a2c-v1';
+const VERSION = 'a2c-v2';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './favicon.png'];
 const LIB_HOSTS = ['cdnjs.cloudflare.com', 'cdn.jsdelivr.net', 'unpkg.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 
