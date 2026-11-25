@@ -251,6 +251,22 @@ html.presenting-on, html.presenting-on body { overflow:hidden; }
   .toolbar{gap:8px;padding:10px}
   #ed{padding:18px 16px;min-height:260px}
 }
+.reqbtn{white-space:nowrap;font-size:.88rem;padding:7px 12px}
+#reqDlg{border:0;border-radius:14px;padding:0;width:min(480px,calc(100vw - 32px));background:var(--surface);color:var(--fg);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+#reqDlg::backdrop{background:rgba(10,14,30,.55)}
+.rq-h{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line)}
+.rq-h h2{margin:0;font-size:1.3rem;font-weight:600}
+.rq-x{font:inherit;font-size:1.1rem;background:none;border:0;color:var(--muted);cursor:pointer;width:34px;height:34px;border-radius:8px}
+.rq-x:hover{background:var(--bg)}
+.rq-b{padding:16px 20px;display:flex;flex-direction:column;gap:6px}
+.rq-b label{font-size:.92rem;margin-top:6px}
+.rq-b input,.rq-b textarea{font:inherit;padding:9px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--fg)}
+.rq-b textarea{font-family:var(--font-mono);font-size:.82rem;resize:vertical}
+.rq-b input:focus-visible,.rq-b textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.rq-err{color:var(--danger);font-size:.85rem;min-height:1.2em;margin:4px 0 0}
+.rq-ok{margin:0;color:var(--ok)} .rq-note{margin:0;color:var(--muted);font-size:.88rem}
+.rq-f{display:flex;justify-content:flex-end;gap:8px;padding:12px 20px;border-top:1px solid var(--line)}
+.noresult-req{margin-left:6px;font:inherit;color:var(--accent);background:none;border:0;text-decoration:underline;cursor:pointer;padding:0}
 </style>
 </head>
 <body>
@@ -347,6 +363,7 @@ html.presenting-on, html.presenting-on body { overflow:hidden; }
   <div class="songtop">
     <label for="songQ" class="sq">Search <input id="songQ" type="search" placeholder="Song or artist" autocomplete="off"></label>
     <span class="tot" id="songCount"></span>
+    <button class="btn reqbtn" id="reqOpen" type="button">&#9835; Request a Song</button>
   </div>
   <div id="songMsg" role="status"></div>
   <div class="songwrap"><table class="songs"><thead id="songHead"></thead><tbody id="songBody"></tbody></table></div>
@@ -443,6 +460,24 @@ html.presenting-on, html.presenting-on body { overflow:hidden; }
   </div>
 </div>
 
+<dialog id="reqDlg" aria-labelledby="reqHead">
+  <form id="reqForm" method="dialog" novalidate>
+    <div class="rq-h"><h2 id="reqHead">Request a Song</h2><button type="button" class="rq-x" id="reqClose" aria-label="Close">&#x2715;</button></div>
+    <div class="rq-b" id="reqFields">
+      <label for="reqTitle">Song Title</label><input id="reqTitle" placeholder="Title" required autocomplete="off">
+      <label for="reqArtist">Song Artist</label><input id="reqArtist" placeholder="Artist" autocomplete="off">
+      <label for="reqEmail">Your Email address</label><input id="reqEmail" type="email" placeholder="Email" autocomplete="email">
+      <p class="rq-err" id="reqErr" role="alert"></p>
+    </div>
+    <div class="rq-b" id="reqDone" hidden>
+      <p class="rq-ok">Your email app should now open with the request ready to send. Tap <b>Send</b> there to finish.</p>
+      <p class="rq-note">If it didn't open, copy the request below and email it to <b id="reqTo"></b>.</p>
+      <textarea id="reqText" readonly rows="6"></textarea>
+    </div>
+    <div class="rq-f" id="reqFoot1"><button type="submit" class="btn primary" id="reqSend">Submit</button></div>
+    <div class="rq-f" id="reqFoot2" hidden><button type="button" class="btn" id="reqCopy">Copy request</button><button type="button" class="btn primary" id="reqOk">Done</button></div>
+  </form>
+</dialog>
 <div class="bar" id="mergeBar" hidden>
   <div class="bar-in">
     <label for="outName">File name <input id="outName" value="merged.pdf" spellcheck="false"></label>
@@ -1788,7 +1823,7 @@ function renderSongs(){
   ['#', 'Song', 'Artist', ...cols.map(c => c[1]), 'Merge'].forEach((t, i) => { const th = document.createElement('th'); th.textContent = t; th.className = i === 0 ? 'n' : i === 2 ? 'artist' : i > 2 ? 'c' : ''; hr.appendChild(th); });
   head.appendChild(hr);
   body.innerHTML = '';
-  if(!shown.length){ const tr = document.createElement('tr'), td = document.createElement('td'); td.colSpan = 4 + cols.length; td.className = 'none'; td.textContent = songList.length ? 'No songs match your search.' : 'No songs found yet.'; tr.appendChild(td); body.appendChild(tr); }
+  if(!shown.length){ const tr = document.createElement('tr'), td = document.createElement('td'); td.colSpan = 4 + cols.length; td.className = 'none'; td.textContent = songList.length ? 'No songs match your search.' : 'No songs found yet.'; if(q){ const rb = document.createElement('button'); rb.type = 'button'; rb.className = 'noresult-req'; rb.textContent = 'Request this song'; rb.addEventListener('click', () => openRequest($('#songQ').value.trim())); td.appendChild(rb); } tr.appendChild(td); body.appendChild(tr); }
   shown.forEach((s, i) => {
     const tr = document.createElement('tr');
     const n = document.createElement('td'); n.className = 'n'; n.textContent = i + 1;
@@ -1870,6 +1905,43 @@ async function addSongToMerge(s, kind, bt){
     bt.textContent = label; bt.disabled = false;
   }
 }
+// ---------- Request a Song ----------
+// Requests are sent by email: Submit opens the person's email app with the request filled in.
+const REQUEST_EMAIL = 'auhcfca2c@gmail.com';
+const reqDlg = $('#reqDlg');
+function openRequest(title){
+  $('#reqFields').hidden = false; $('#reqFoot1').hidden = false; $('#reqDone').hidden = true; $('#reqFoot2').hidden = true;
+  $('#reqErr').textContent = '';
+  if(title != null) $('#reqTitle').value = title;
+  if(reqDlg.showModal) reqDlg.showModal(); else reqDlg.setAttribute('open', '');
+  setTimeout(() => $('#reqTitle').focus(), 30);
+}
+function closeRequest(){ if(reqDlg.close) reqDlg.close(); else reqDlg.removeAttribute('open'); }
+$('#reqOpen').addEventListener('click', () => openRequest());
+['reqTitle','reqArtist','reqEmail'].forEach(id => $('#'+id).addEventListener('input', () => { $('#reqErr').textContent = ''; }));
+$('#reqClose').addEventListener('click', closeRequest);
+$('#reqOk').addEventListener('click', () => { closeRequest(); $('#reqTitle').value = ''; $('#reqArtist').value = ''; });
+reqDlg.addEventListener('click', e => { if(e.target === reqDlg) closeRequest(); });
+$('#reqForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const t = $('#reqTitle').value.trim(), a = $('#reqArtist').value.trim(), em = $('#reqEmail').value.trim();
+  if(!t){ $('#reqErr').textContent = 'Please enter the song title.'; $('#reqTitle').focus(); return; }
+  if(em && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)){ $('#reqErr').textContent = 'Please check your email address.'; $('#reqEmail').focus(); return; }
+  const subject = 'Song request: ' + t;
+  const body = `Song title: ${t}\nArtist: ${a || '(not given)'}\nRequested by: ${em || '(no email given)'}\n\nSent from the A2C Music app`;
+  $('#reqTo').textContent = REQUEST_EMAIL;
+  $('#reqText').value = `To: ${REQUEST_EMAIL}\nSubject: ${subject}\n\n${body}`;
+  $('#reqFields').hidden = true; $('#reqFoot1').hidden = true; $('#reqDone').hidden = false; $('#reqFoot2').hidden = false;
+  const a2 = document.createElement('a');
+  a2.href = `mailto:${REQUEST_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  a2.target = '_blank'; a2.rel = 'noopener'; document.body.appendChild(a2); a2.click(); a2.remove();
+});
+$('#reqCopy').addEventListener('click', async () => {
+  const ta = $('#reqText');
+  try{ await navigator.clipboard.writeText(ta.value); $('#reqCopy').textContent = 'Copied'; }
+  catch(e){ ta.focus(); ta.select(); $('#reqCopy').textContent = 'Selected \u2013 press copy'; }
+  setTimeout(() => { $('#reqCopy').textContent = 'Copy request'; }, 1800);
+});
 $('#songQ').addEventListener('input', renderSongs);
 renderSongs();
 refreshSongs();
